@@ -1,0 +1,50 @@
+name: CI Build for shark app
+
+on:
+  push:
+    branches:
+      - master
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+  
+      - name: login to docker
+        env:
+          DOCKER_USER: ${{secrets.DOCKER_USER}}
+          DOCKER_PASSWORD: ${{secrets.DOCKER_PASSWORD}}
+        run: |
+          docker login -u $DOCKER_USER -p $DOCKER_PASSWORD
+
+      - name: Build the Docker image
+        run: |
+          docker build \
+            --file Dockerfile \
+            --tag darams01/sharkapp:latest .
+                     
+      - name: Docker Push
+        run: docker push darams01/sharkapp:latest
+
+      - name: Sign in to EC2 and execute commands
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{secrets.SERVER_ADDRESS}}
+          username: ubuntu
+          key: ${{secrets.SSH_PRIVATE_KEY}}
+          envs: GITHUB_SHA
+          script: |
+            docker login -u ${{ secrets.DOCKER_USER }} -p ${{ secrets.DOCKER_PASSWORD }} 
+            docker stop sharkapp
+            docker rm sharkapp
+            docker rmi darams01/sharkapp
+            docker pull darams01/sharkapp
+           
+            docker run -d \
+            -p 3000:3000 \
+            --restart always \
+            --name sharkapp \
+            darams01/sharkapp:latest
